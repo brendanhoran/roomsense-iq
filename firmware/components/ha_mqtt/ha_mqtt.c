@@ -94,9 +94,7 @@
 static EventGroupHandle_t mqtt_event_group, env_event_group, esp_event_group, persist_event_group, discovery_event_group;
 static EventGroupHandle_t occupancy_group;
 
-static int mqtt_error_count = 0;
-
-static esp_mqtt_client_handle_t client;
+static esp_mqtt_client_handle_t client = NULL;
 
 static const int CONNECTED_BIT = BIT0;
 static const int DISCOVERY_BIT = BIT1;
@@ -424,13 +422,12 @@ mqtt_credentials_t* get_mqtt_credentials(void)
 
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
-	char topic[DEFAULT_BUF_SIZE];
-	char data[DEFAULT_BUF_SIZE];
 	uint16_t num;
 
 	switch (event->event_id)
 	{
 	case MQTT_EVENT_CONNECTED:
+		ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
 
 //		esp_mqtt_client_subscribe(event->client, esp_discovery_button_start.set_topic, SUBSCRIBE_QOS);
 //		vTaskDelay(50 / portTICK_PERIOD_MS);
@@ -581,13 +578,13 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 		mqtt_app_send_message(MQTT_APP_MSG_CONNECTED);
 		break;
 	case MQTT_EVENT_DISCONNECTED:
+		ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
 		xEventGroupClearBits(mqtt_event_group, CONNECTED_BIT);
 		mqtt_app_send_message(MQTT_APP_MSG_DISCONNECTED);
 		break;
 
 	case MQTT_EVENT_ERROR:
-		ESP_LOGE(TAG, ">>>>>>>>>>>>>>>>MQTT_EVENT_ERROR");
-		mqtt_error_count++;
+		ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
 		// Read the error code
 		esp_mqtt_error_type_t err_code = event->error_handle->error_type;
 		esp_mqtt_connect_return_code_t connect_return_code = event->error_handle->connect_return_code;
@@ -610,13 +607,10 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
 		break;
 	case MQTT_EVENT_DATA:
-		memset(topic, 0, DEFAULT_BUF_SIZE);
-		memset(data, 0, DEFAULT_BUF_SIZE);
-		strncpy(topic, event->topic, event->topic_len);
-		strncpy(data, event->data, event->data_len);
-		//ESP_LOGI(TAG, ">>>>>----------------------MQTT_EVENT_DATA----------------------->>>>[MQTT] Data %s with %s", topic, data);
+		ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+		//ESP_LOGI(TAG, ">>>>>----------------------MQTT_EVENT_DATA----------------------->>>>[MQTT] Data %s with %s", event->topic, event->data);
 
-		if (strcmp(topic, esp_discovery_button_start.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_button_start.set_topic) == 0)
 		{
 			start_stop_status = toggle_value(start_stop_status);
 			start_stop_status_changed = true;
@@ -633,30 +627,30 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
 		}
 
-		if (strcmp(topic, esp_discovery_button_read.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_button_read.set_topic) == 0)
 		{
-			//ESP_LOGI(TAG, "[BUTTON] ------Button Read-------%s--------", data);
+			//ESP_LOGI(TAG, "[BUTTON] ------Button Read-------%s--------", event->data);
 			roomsense_iq_shared.buttons_shared.g_button_get_config = true;
 			//ld2410_app_send_message(LD2410_APP_MSG_GET_CONFIG);
 		}
 
-		if (strcmp(topic, esp_discovery_button_config.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_button_config.set_topic) == 0)
 		{
-			//ESP_LOGI(TAG, "[BUTTON] ------Button Config-------%s--------", data);
+			//ESP_LOGI(TAG, "[BUTTON] ------Button Config-------%s--------", event->data);
 			roomsense_iq_shared.buttons_shared.g_button_set_config = true;
 			roomsense_iq_shared.buttons_shared.g_button_config_to_pir = true;
 			//ld2410_app_send_message(LD2410_APP_MSG_SET_CONFIG);
 		}
 
-		if (strcmp(topic, esp_discovery_button_reset.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_button_reset.set_topic) == 0)
 		{
-			//ESP_LOGI(TAG, "[BUTTON] ------Reset-------%s--------", data);
+			//ESP_LOGI(TAG, "[BUTTON] ------Reset-------%s--------", event->data);
 			roomsense_iq_shared.buttons_shared.g_button_factory_reset = true;
 		}
 
-		if (strcmp(topic, esp_discovery_switch_bedsense.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_switch_bedsense.set_topic) == 0)
 		{
-			strcpy(bedsense_switch_status, data);
+			strcpy(bedsense_switch_status, event->data);
 			if (strcmp(bedsense_switch_status, "ON") == 0)
 			{
 				roomsense_iq_shared.ha_mqtt_shared.g_bedsense_status = 1;
@@ -668,9 +662,9 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 			roomsense_iq_shared.ha_mqtt_shared.g_bedsense_changed = 1;
 		}
 
-		if (strcmp(topic, esp_discovery_switch_calsense.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_switch_calsense.set_topic) == 0)
 		{
-			strcpy(calsense_switch_status, data);
+			strcpy(calsense_switch_status, event->data);
 			if (strcmp(calsense_switch_status, "ON") == 0)
 			{
 				roomsense_iq_shared.ha_mqtt_shared.g_calsense_status = 1;
@@ -682,176 +676,176 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 			g_calsense_changed = 1;
 		}
 
-		if (strcmp(topic, esp_discovery_number_pir_sensitivity.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_pir_sensitivity.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.pir_sensor_shared.pir_sensitivity = (pir_sensitivity_e) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_pir_sensitivity_changed = 1;
 		}
 
-		if (strcmp(topic, esp_discovery_number_max_macro_range.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_max_macro_range.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.max_macro_range = (uint16_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_max_macro_range_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------Number--macro range-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_max_micro_range.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_max_micro_range.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.max_micro_range = (uint16_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_max_micro_range_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------Number--micro range-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_timeout.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_timeout.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.absence_time_out = (uint16_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_timeout_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------timeout-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_0.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_0.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[0] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_0-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_1.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_1.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[1] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_1-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_2.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_2.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[2] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_2-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_3.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_3.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[3] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_3-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_4.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_4.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[4] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_4-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_5.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_5.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[5] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_5-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_6.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_6.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[6] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_6-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_7.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_7.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[7] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_7-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_macro_threshold_8.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_macro_threshold_8.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.macro_threshold[8] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_macro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------macro threshold_8-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_0.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_0.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[0] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_0-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_1.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_1.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[1] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_1-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_2.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_2.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[2] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_2-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_3.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_3.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[3] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_3-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_4.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_4.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[4] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_4-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_5.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_5.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[5] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_5-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_6.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_6.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[6] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_6-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_7.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_7.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[7] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_7-----%d----------", num);
 		}
 
-		if (strcmp(topic, esp_discovery_number_micro_threshold_8.set_topic) == 0)
+		if (strcmp(event->topic, esp_discovery_number_micro_threshold_8.set_topic) == 0)
 		{
-			num = atoi(data);
+			num = atoi(event->data);
 			roomsense_iq_shared.ld2410_config_shared.micro_threshold[8] = (uint8_t) num;
 			roomsense_iq_shared.ha_mqtt_shared.g_micro_threshold_changed = 1;
 			//ESP_LOGI(TAG, "[Number] ------micro threshold_8-----%d----------", num);
@@ -1465,27 +1459,22 @@ void task_settings_publish(void *param)
  */
 static void mqtt_app_task(void *pvParameters)
 {
-	int count;
 	char mqtt_uri[MAX_MQTT_HOST_LENGTH];
 	mqtt_app_queue_message_t msg;
 	EventBits_t eventBits;
-	esp_err_t err;
 
-	esp_mqtt_client_config_t mqtt_cfg =
-	{ .uri = CONFIG_MQTT_URI, /*!< Complete MQTT broker URI */
-	.event_handle = mqtt_event_handler, /*!< handle for MQTT events as a callback in legacy mode */
-	.lwt_topic = esp_discovery_number_max_macro_range.status_topic, /*!< LWT (Last Will and Testament) message topic  to specify the actions to be taken after a client goes offline unexpectedly */
-	.lwt_msg = STATUS_OFFLINE, /*!< LWT message (NULL by default) */
-	.lwt_qos = 1, /*!< LWT message qos */
-	.lwt_retain = true, /*!< LWT retained message flag */
-	.keepalive = 10 }; /*!< mqtt keepalive, default is 120 seconds */
+	esp_mqtt_client_config_t mqtt_cfg = {
+		.uri = CONFIG_MQTT_URI, /*!< Complete MQTT broker URI */
+		.event_handle = mqtt_event_handler, /*!< handle for MQTT events as a callback in legacy mode */
+		.lwt_topic = esp_discovery_number_max_macro_range.status_topic, /*!< LWT (Last Will and Testament) message topic  to specify the actions to be taken after a client goes offline unexpectedly */
+		.lwt_msg = STATUS_OFFLINE, /*!< LWT message (NULL by default) */
+		.lwt_qos = 1, /*!< LWT message qos */
+		.lwt_retain = true, /*!< LWT retained message flag */
+		.keepalive = 10 /*!< mqtt keepalive, default is 120 seconds */
+	};
 
-	client = esp_mqtt_client_init(&mqtt_cfg); /*Creates mqtt client handle based on the configuration.*/
-	ESP_ERROR_CHECK(esp_mqtt_client_start(client)); /*Starts mqtt client with already created client handle.*/
 
-// Send first event message
-	ESP_LOGI(TAG, "[MQTT] Connecting to %s...", CONFIG_MQTT_URI);
-
+	// Send first event message
 	mqtt_app_send_message(MQTT_APP_MSG_LOAD_SAVED_CREDENTIALS);
 
 	for (;;)
@@ -1499,6 +1488,13 @@ static void mqtt_app_task(void *pvParameters)
 			case MQTT_APP_MSG_LOAD_SAVED_CREDENTIALS:
 				ESP_LOGI(TAG, "MQTT_APP_MSG_LOAD_SAVED_CREDENTIALS");
 
+				if (client) {
+					ESP_LOGI(TAG, "Existing client found, stopping and destroying before proceeding");
+					ESP_ERROR_CHECK(esp_mqtt_client_stop(client));
+					ESP_ERROR_CHECK(esp_mqtt_client_destroy(client));
+					client = NULL;
+				}
+
 				if (app_nvs_load_mqtt_creds())
 				{
 					ESP_LOGI(TAG, "Loaded mqtt credentials");
@@ -1508,17 +1504,19 @@ static void mqtt_app_task(void *pvParameters)
 					strcat(mqtt_uri, ":");
 					strcat(mqtt_uri, mqtt_credentials->mqtt_port);
 					ESP_LOGI(TAG, "Loaded mqtt credentials URI =%s", mqtt_uri);
-					strcpy(mqtt_cfg.uri, mqtt_uri);
-					strcpy(mqtt_cfg.username, mqtt_credentials->mqtt_username);
-					strcpy(mqtt_cfg.password, mqtt_credentials->mqtt_password);
-					ESP_ERROR_CHECK(esp_mqtt_set_config(client, &mqtt_cfg));
-					//ESP_ERROR_CHECK(esp_mqtt_client_start(client)); /*Starts mqtt client with already created client handle.*/
+					mqtt_cfg.uri = mqtt_uri;
+					mqtt_cfg.username = mqtt_credentials->mqtt_username;
+					mqtt_cfg.password = mqtt_credentials->mqtt_password;
 					xEventGroupSetBits(mqtt_app_event_group, MQTT_APP_CONNECTING_USING_SAVED_CREDS_BIT);
 				}
 				else
 				{
-					ESP_LOGI(TAG, "Unable to load mqtt credentials");
+					ESP_LOGI(TAG, "Unable to load mqtt credentials, using defaults");
 				}
+
+				ESP_LOGI(TAG, "[MQTT] Connecting to %s...", mqtt_cfg.uri);
+				client = esp_mqtt_client_init(&mqtt_cfg); /*Creates mqtt client handle based on the configuration.*/
+				ESP_ERROR_CHECK(esp_mqtt_client_start(client)); /*Starts mqtt client with already created client handle.*/
 
 				mqtt_app_send_message(MQTT_APP_MSG_START_HTTP_SERVER);
 
@@ -1543,7 +1541,13 @@ static void mqtt_app_task(void *pvParameters)
 				//ESP_LOGI(TAG, "xPortGetFreeHeapSize() %d", xPortGetFreeHeapSize());
 				// Let the HTTP server know about the connection attempt
 				http_server_monitor_send_message(HTTP_MSG_MQTT_CONNECT_INIT);
-				ESP_ERROR_CHECK(esp_mqtt_client_disconnect((client)));
+
+				if (client) {
+					ESP_LOGI(TAG, "Existing client found, stopping and destroying before proceeding");
+					ESP_ERROR_CHECK(esp_mqtt_client_stop(client));
+					ESP_ERROR_CHECK(esp_mqtt_client_destroy(client));
+					client = NULL;
+				}
 
 				strcpy(mqtt_uri, "");
 				strcat(mqtt_uri, "mqtt://");
@@ -1552,10 +1556,13 @@ static void mqtt_app_task(void *pvParameters)
 				strcat(mqtt_uri, mqtt_credentials->mqtt_port);
 				ESP_LOGI(TAG, "URI =%s", mqtt_uri);
 
-				strcpy(mqtt_cfg.uri, mqtt_uri);
-				strcpy(mqtt_cfg.username, mqtt_credentials->mqtt_username);
-				strcpy(mqtt_cfg.password, mqtt_credentials->mqtt_password);
+				mqtt_cfg.uri = mqtt_uri;
+				mqtt_cfg.username = mqtt_credentials->mqtt_username;
+				mqtt_cfg.password = mqtt_credentials->mqtt_password;
+
+				client = esp_mqtt_client_init(&mqtt_cfg);
 				ESP_ERROR_CHECK(esp_mqtt_set_config(client, &mqtt_cfg));
+				ESP_ERROR_CHECK(esp_mqtt_client_start(client)); 
 
 				break;
 			case MQTT_APP_MSG_NEW_CREDENTIALS:
@@ -1629,8 +1636,8 @@ static void mqtt_app_task(void *pvParameters)
 					//ESP_ERROR_CHECK(esp_mqtt_client_disconnect(client));
 					app_nvs_clear_mqtt_creds();
 
-					strcpy(mqtt_cfg.username, "");
-					strcpy(mqtt_cfg.password, "");
+					mqtt_cfg.username = NULL;
+					mqtt_cfg.password = NULL;
 
 					//mqtt_app_send_message(MQTT_APP_MSG_LOAD_SAVED_CREDENTIALS);
 
