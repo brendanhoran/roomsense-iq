@@ -118,14 +118,6 @@ uint16_t macro_distance_g, micro_distance_g, detection_distance_g;
 uint16_t  macro_level_g, micro_level_g;
 unsigned long time_us_g;
 
-
-typedef struct {
-	uint16_t* buffer; // Buffer to hold the data points
-	uint16_t window_size; // Size of the moving average window
-	uint16_t index; // Index of the current data point in the buffer
-	uint16_t sum; // Sum of the data points in the buffer
-} MovingAverageFilter;
-
 /**
  * @brief Initialize device descriptor
  *
@@ -136,12 +128,6 @@ typedef struct {
  *
  * @return ESP_OK on success
  */
-
-
-
-void moving_average_init(MovingAverageFilter* filter, uint16_t window_size);
-uint16_t moving_average_update(MovingAverageFilter* filter, uint16_t new_data);
-void moving_average_cleanup(MovingAverageFilter* filter);
 
 esp_err_t ld2410_init(ld2410_dev_t *dev, uart_port_t uart_port, gpio_num_t tx_gpio, gpio_num_t rx_gpio);
 esp_err_t ld2410_connect(ld2410_dev_t *dev);

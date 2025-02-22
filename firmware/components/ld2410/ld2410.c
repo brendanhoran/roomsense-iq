@@ -21,6 +21,7 @@
 #include "esp_timer.h"
 #include "ha_mqtt.h"
 #include "direction-detection.h"
+#include "utilities.h"
 
 static const char *TAG = "ld2410";
 
@@ -55,59 +56,6 @@ enum target_status
 {
 	NoTarget = 0x00, Moving = 0x01, Motionless = 0x02, Moving_Motionless = 0x03
 };
-
-// Function to initialize the moving average filter
-void moving_average_init(MovingAverageFilter *filter, uint16_t window_size)
-{
-	filter->buffer = (uint16_t*) calloc(window_size, sizeof(uint16_t));
-	filter->window_size = window_size;
-	filter->index = 0;
-	filter->sum = 0;
-}
-
-// Function to update the moving average filter with a new data point and return the filtered output
-uint16_t moving_average_update(MovingAverageFilter *filter, uint16_t new_data)
-{
-
-	int delta;
-	static uint16_t ave_data = 0;
-
-	// Subtract the oldest data point from the sum
-	filter->sum -= filter->buffer[filter->index];
-
-	delta = new_data - ave_data;
-	if (delta > 10)
-	{
-
-		new_data = ave_data + 10;
-	}
-
-	if (delta < -10)
-	{
-
-		new_data = ave_data - 10;
-	}
-
-	// Add the new data point to the sum
-	filter->sum += new_data;
-
-	// Update the buffer with the new data point
-	filter->buffer[filter->index] = new_data;
-
-	// Increment the index circularly
-	filter->index = (filter->index + 1) % filter->window_size;
-
-	ave_data = filter->sum / filter->window_size;
-
-	// Calculate and return the moving average
-	return ave_data;
-}
-
-// Function to free the memory used by the moving average filter
-void moving_average_cleanup(MovingAverageFilter *filter)
-{
-	free(filter->buffer);
-}
 
 esp_err_t ld2410_init(ld2410_dev_t *dev, uart_port_t uart_port, gpio_num_t tx_gpio, gpio_num_t rx_gpio)
 {
