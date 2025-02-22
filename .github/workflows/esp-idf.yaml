@@ -38,7 +38,7 @@ jobs:
           cd release
           cp -v "../firmware.bin" "roomsense_${{ github.ref_name }}.bin"
           cp -v "../firmware.elf" "roomsense_${{ github.ref_name }}.elf"
-          sha256sum *.bin *.elf > SHA256SUMS.txt
+          sha256sum *.bin *.elf | tee SHA256SUMS.txt
 
       - name: publish firmware release
         uses: softprops/action-gh-release@v2
