@@ -6,6 +6,7 @@
 #include <esp_log.h>
 #include "tasks_common.h"
 #include "esp_adc_cal.h"
+#include "utilities.h"
 
 static const char *TAG = "ada161";
 
@@ -23,7 +24,7 @@ static esp_adc_cal_characteristics_t adc_chars;
 CircularBuffer buffer_light;
 
 static const adc_channel_t channel = ADC_CHANNEL_4;
-static const adc_atten_t atten     = ADC_ATTEN_DB_11;
+static const adc_atten_t atten     = ADC_ATTEN_DB_12;
 static const adc_unit_t unit       = ADC_UNIT_1;
 
 void adc_init()
@@ -57,7 +58,7 @@ void adc_init()
 
 uint32_t adc_read()
 {
-	uint32_t voltage;
+	//uint32_t voltage;
 	uint32_t adc_reading = 0;
 
 	//Multisampling
@@ -78,7 +79,7 @@ uint32_t adc_read()
 	adc_reading /= NO_OF_SAMPLES;
 
 	//Convert adc_reading to voltage in mV
-	voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc_chars);
+	//voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc_chars);
 	//printf("raw =%d, vol=%d\n", adc_reading, voltage);
 
 	return adc_reading;
@@ -87,12 +88,13 @@ uint32_t adc_read()
 void ada161_task(void *pvParameter)
 {
 	int retry_counter = 0;
-	uint32_t pre_value = 20, adc_reading, counter =0;
-	int32_t diff;
 
-    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
-    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
-     init_buffer(&buffer_light);
+	MovingAverageFilter filter;
+	moving_average_init(&filter, 15, 0);
+
+	ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+	ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
+	init_buffer(&buffer_light);
 
 	while (true)
 	{
@@ -102,28 +104,13 @@ void ada161_task(void *pvParameter)
 		{
 			if (xSemaphoreTake(xMutex_g_light_density_raw, (TickType_t) 10) == pdTRUE)
 			{
-				adc_reading = adc_read();
-				diff = pre_value - adc_reading;
-
-				//filter out glitches in ADC readings
-				if(diff > 40 && counter < 2)
-				{
-					adc_reading = pre_value;
-					counter ++;
-				}
-				else
-				{
-					counter = 0;
-				}
-				roomsense_iq_shared.adafruit_161_shared.light_density_raw = adc_reading;
-
+				// averaging and rounding is used to quiet the sensor; it tends to bounce around with each (oversampled) adc reading, even with consistent light intensity
+				roomsense_iq_shared.adafruit_161_shared.light_density_raw = ROUND_TO_NEAREST(moving_average_update(&filter, adc_read()), 10);
 				write_to_buffer(&buffer_light, (float) roomsense_iq_shared.adafruit_161_shared.light_density_raw);
 
-				pre_value = adc_reading;
-
-				if (xTaskGetTickCount() % (FIFTEEN_MINUTES_MS / portTICK_PERIOD_MS) == 0) {
-					//addToBuffer(buffer_light, g_light_density_raw);
-				}
+				//if (xTaskGetTickCount() % (FIFTEEN_MINUTES_MS / portTICK_PERIOD_MS) == 0) {
+				//	addToBuffer(buffer_light, g_light_density_raw);
+				//}
 
 				xSemaphoreGive(xMutex_g_light_density_raw);
 				retry_counter = 0;

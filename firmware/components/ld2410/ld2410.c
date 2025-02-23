@@ -126,7 +126,7 @@ esp_err_t ld2410_set_config(ld2410_dev_t *dev, ld2410_config_t *ld2410_config)
 	}
 	vTaskDelay(553 / portTICK_PERIOD_MS);
 
-	ack = ld2410_send_command(dev, SET_RANGE, value, 0x14, NULL); //set max range
+	ack = ld2410_send_command(dev, SET_RANGE, value, 0x14, 0); //set max range
 	if (ack != ESP_OK)
 	{
 		ESP_LOGI(TAG, "ld2410_set_config() SET_RANGE failed.");
@@ -243,7 +243,7 @@ esp_err_t ld2410_start(ld2410_dev_t *dev, uint8_t mode)
 	vTaskDelay(550 / portTICK_PERIOD_MS);
 
 	//set the mode to NORMAL OR ENGINEERING
-	ack = ld2410_send_command(dev, mode, NULL, 0x02, NULL);
+	ack = ld2410_send_command(dev, mode, NULL, 0x02, 0);
 	if (ack != ESP_OK)
 	{
 		ESP_LOGI(TAG, "Failed to set the mode.");
@@ -261,28 +261,28 @@ esp_err_t set_config_mode(ld2410_dev_t *dev)
 	uint8_t value[2] =
 	{ 0x02, 0x00 };
 	esp_err_t ack;
-	ack = ld2410_send_command(dev, ENABLE_CONFIG, value, 0x04, NULL);
+	ack = ld2410_send_command(dev, ENABLE_CONFIG, value, 0x04, 0);
 	return ack;
 }
 
 esp_err_t end_config_mode(ld2410_dev_t *dev)
 {
 	esp_err_t ack;
-	ack = ld2410_send_command(dev, END_CONFIG, NULL, 0x02, NULL);
+	ack = ld2410_send_command(dev, END_CONFIG, NULL, 0x02, 0);
 	return ack;
 }
 
 esp_err_t reboot_module(ld2410_dev_t *dev)
 {
 	esp_err_t ack;
-	ack = ld2410_send_command(dev, REBOOT_MODULE, NULL, 0x02, NULL);
+	ack = ld2410_send_command(dev, REBOOT_MODULE, NULL, 0x02, 0);
 	return ack;
 }
 
 esp_err_t blank_command(ld2410_dev_t *dev)
 {
 	esp_err_t ack;
-	ack = ld2410_send_command(dev, BLANK_CMD, NULL, 0x02, NULL);
+	ack = ld2410_send_command(dev, BLANK_CMD, NULL, 0x02, 0);
 	return ack;
 }
 
@@ -602,7 +602,7 @@ esp_err_t ld2410_get_config(ld2410_dev_t *dev, ld2410_config_t *ld2410_config)
 	{
 		ESP_LOGI(TAG, "LD241 set config mode failed.");
 		ld2410_config->valid = ESP_FAIL;
-		return ld2410_config;
+		return ack;
 	}
 	vTaskDelay(151 / portTICK_PERIOD_MS);
 
@@ -755,8 +755,7 @@ static void ld2410_task(void *pvParameters)
 	int rand_value;
 
 	MovingAverageFilter filter;
-	int window_size = 10; // You can adjust the window size as per your requirement
-	moving_average_init(&filter, window_size);
+	moving_average_init(&filter, 10, 10);
 
 	memset(&roomsense_iq_shared.ld2410_config_shared, 0x00, sizeof(ld2410_config_t));
 	memset(&roomsense_iq_shared.ld2410_data_shared, 0x00, sizeof(ld2410_data_t));
