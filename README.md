@@ -1,1 +1,14 @@
 # roomsense-iq
+
+## Flash
+download zip file from GitHub Action.
+
+Run:
+```
+esptool.py -p /dev/ttyUSB0 -b 460800 --before default_reset --after hard_reset \
+--chip esp32s3  write_flash --flash_mode dio --flash_size detect \
+--flash_freq 80m 0x0 bootloader/bootloader.bin \
+0x8000 partition_table/partition-table.bin \
+0xd000 ota_data_initial.bin 0x10000 \
+firmware.bin
+```
